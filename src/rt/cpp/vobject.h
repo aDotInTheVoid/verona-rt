@@ -189,5 +189,23 @@ namespace verona::rt
       return Object::register_object(
         alloc.alloc<vsizeof<T>>(), VBase<T, Cown>::desc());
     }
+
+    // This is used by the boxcar bindings to request an object with extra
+    // capacity.
+    //
+    //     new (req_size) ActualCown(conw_args)
+    //
+    // `conw_args` are used to construct the value in the ActualCown, whereas
+    // `req_size` is sent here to control the allocation. It must have enough
+    // storage for the object header, the ActualCown, and the rust managed data.
+    void* operator new(size_t base_size, size_t req_size)
+    {
+      assert(req_size >= base_size);
+
+      // This advances the pointer forward from that returned by the allocator,
+      // reducing the amount of usable bytes.
+      return Object::register_object(
+        ThreadAlloc::get().alloc(req_size), VBase<T, Cown>::desc());
+    }
   };
 } // namespace verona::rt

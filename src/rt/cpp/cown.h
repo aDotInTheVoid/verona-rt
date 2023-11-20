@@ -34,6 +34,16 @@ namespace verona::cpp
   template<typename T>
   class cown_ptr;
 
+  typedef void (*dtor)(void*);
+  class DtorThunk
+  {
+    dtor dtor_;
+
+  public:
+    DtorThunk(dtor dtor) : dtor_(dtor) {}
+    ~DtorThunk(); // Forward delcaired, has to be impl'd below ActualCown
+  };
+
   /**
    * Internal Verona runtime cown for the type T.
    *
@@ -58,7 +68,16 @@ namespace verona::cpp
 
     template<typename TT, typename... Args>
     friend cown_ptr<TT> make_cown(Args&&... ts);
+
+    friend cown_ptr<DtorThunk> make_boxcar_cown(size_t, dtor);
+    friend DtorThunk::~DtorThunk();
   };
+
+  DtorThunk::~DtorThunk()
+  {
+    auto self = reinterpret_cast<char*>(this);
+    dtor_(self - offsetof(ActualCown<DtorThunk>, value));
+  }
 
   /**
    * Smart pointer to represent shared access to a cown.
@@ -328,6 +347,8 @@ namespace verona::cpp
     template<typename>
     friend class acquired_cown;
 
+    friend cown_ptr<DtorThunk> make_boxcar_cown(size_t, dtor);
+
     // Note only requires friend when TT is T
     // but C++ doesn't like this.
     template<typename TT, typename... Args>
@@ -372,6 +393,13 @@ namespace verona::cpp
       "use case.");
     Scheduler::stats().cown();
     return cown_ptr<T>(new ActualCown<T>(std::forward<Args>(ts)...));
+  }
+
+  cown_ptr<DtorThunk> make_boxcar_cown(size_t size, dtor dtor)
+  {
+    Scheduler::stats().cown();
+    ActualCown<DtorThunk>* ptr = new (size) ActualCown<DtorThunk>(dtor);
+    return cown_ptr<DtorThunk>(ptr);
   }
 
   template<typename T>
